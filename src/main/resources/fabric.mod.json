@@ -3,12 +3,12 @@
 	"id": "polym-env",
 	"version": "${version}",
 	"name": "polym-env",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "Polym Env Quality of Life mod",
 	"authors": [
-		"Me!"
+		"Junnio"
 	],
 	"contact": {
-		"homepage": "https://fabricmc.net/",
+		"homepage": "https://github.com/Junn1o",
 		"sources": "https://github.com/FabricMC/fabric-example-mod"
 	},
 	"license": "CC0-1.0",
