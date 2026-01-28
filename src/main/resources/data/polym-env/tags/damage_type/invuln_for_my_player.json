@@ -1,0 +1,10 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:player_attack",
+    "minecraft:mace_smash",
+    "minecraft:arrow",
+    "minecraft:spear",
+    "minecraft:generic_kill"
+  ]
+}

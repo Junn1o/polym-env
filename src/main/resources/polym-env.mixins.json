@@ -6,7 +6,8 @@
 		"PhantomHealthMixin",
 		"MinecartControllerAccessor",
 		"AbstractMinecartEntityMixin",
-		"ExperimentalMinecartControllerMixin"
+		"ExperimentalMinecartControllerMixin",
+		"Invincible"
 	],
 	"injectors": {
 		"defaultRequire": 1
