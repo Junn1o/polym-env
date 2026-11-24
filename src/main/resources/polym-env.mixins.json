@@ -4,12 +4,6 @@
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
 		"PhantomHealthMixin",
-		"MinecartControllerAccessor",
-		"AbstractMinecartEntityMixin",
-		"AbstractMinecartCreateMixin",
-		"AbstractMinecartAccelMixin",
-		"ExperimentalMinecartControllerMixin",
-		"ExperimentalMinecartCraftMixin",
 		"Invincible"
 	],
 	"injectors": {

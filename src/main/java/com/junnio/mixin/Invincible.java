@@ -1,6 +1,7 @@
 package com.junnio.mixin;
 
 import com.junnio.util.DamageTags;
+import com.junnio.util.JunnioConstants;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
@@ -31,8 +32,7 @@ abstract class Invincible {
 //    private static boolean isYourSpecialPlayer(ServerPlayer player) {
 //        return player.getUUID().equals(SPECIAL_UUID);
 //    }
-    private static final String TAG = "chosen_one";
     private static boolean isYourSpecialPlayer(ServerPlayer player) {
-        return player.getTags().contains(TAG);
+        return player.getTags().contains(JunnioConstants.CHOSEN_ONE_TAG);
     }
 }
