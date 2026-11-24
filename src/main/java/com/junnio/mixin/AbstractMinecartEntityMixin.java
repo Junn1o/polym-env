@@ -1,6 +1,7 @@
 package com.junnio.mixin;
 
 import com.junnio.util.CustomMaxSpeedAccessor;
+import com.junnio.util.ExperimentalTrainAccessor;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
@@ -11,9 +12,12 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(AbstractMinecart.class)
-public class AbstractMinecartEntityMixin implements CustomMaxSpeedAccessor {
+public class AbstractMinecartEntityMixin implements CustomMaxSpeedAccessor, ExperimentalTrainAccessor {
     @Unique
     private double customMaxSpeed = -1.0D;
+
+    @Unique
+    private boolean experimentalTrain = false;
 
     //? if <=1.21.4 {
     /*@Inject(method = "writeCustomDataToNbt", at = @At("HEAD"))
@@ -44,11 +48,13 @@ public class AbstractMinecartEntityMixin implements CustomMaxSpeedAccessor {
     @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
     private void writeCustomMaxSpeed(ValueOutput view, CallbackInfo ci) {
         view.putDouble("CustomMaxSpeed", this.customMaxSpeed);
+        view.putBoolean("ExperimentalTrain", this.experimentalTrain);
     }
 
     @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
     private void readCustomMaxSpeed(ValueInput view, CallbackInfo ci) {
         this.customMaxSpeed = view.getDoubleOr("CustomMaxSpeed", -1.0);
+        this.experimentalTrain = view.getBooleanOr("ExperimentalTrain", false);
     }
     //?}
 
@@ -58,5 +64,13 @@ public class AbstractMinecartEntityMixin implements CustomMaxSpeedAccessor {
 
     public void setCustomMaxSpeed(double speed) {
         this.customMaxSpeed = speed;
+    }
+
+    public boolean isExperimentalTrain() {
+        return this.experimentalTrain;
+    }
+
+    public void setExperimentalTrain(boolean experimentalTrain) {
+        this.experimentalTrain = experimentalTrain;
     }
 }

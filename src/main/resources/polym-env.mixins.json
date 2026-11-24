@@ -6,7 +6,10 @@
 		"PhantomHealthMixin",
 		"MinecartControllerAccessor",
 		"AbstractMinecartEntityMixin",
+		"AbstractMinecartCreateMixin",
+		"AbstractMinecartAccelMixin",
 		"ExperimentalMinecartControllerMixin",
+		"ExperimentalMinecartCraftMixin",
 		"Invincible"
 	],
 	"injectors": {
