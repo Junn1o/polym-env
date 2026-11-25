@@ -1,30 +1,140 @@
-# Automatically build the project and run any configured tests for every push
-# and submitted pull request. This can help catch issues that only occur on
-# certain platforms or Java versions, and provides a first line of defence
-# against bad commits.
-
 name: build
-on: [pull_request, push]
+
+on:
+  push:
+    paths-ignore: ['docs/**', '**.md']
+  pull_request:
+    paths-ignore: ['docs/**', '**.md']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  pick-runner:
+    # pull requests from this repo are already covered by the push run of the same commit
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
+    outputs:
+      runner: ${{ steps.pick.outputs.runner }}
     steps:
+      - name: pick runner
+        id: pick
+        env:
+          TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+          TRUSTED: ${{ github.event_name == 'push' && github.actor == github.repository_owner }}
+          SELF_HOSTED_RUNNER: polym-env
+        run: |
+          runner='"ubuntu-24.04"'
+          echo "event=${{ github.event_name }} actor=${{ github.actor }} owner=${{ github.repository_owner }} trusted=$TRUSTED"
+          if [ "$TRUSTED" != "true" ]; then
+            echo "Not a push by the owner, using GitHub runner"
+          elif [ -z "$TOKEN" ]; then
+            echo "RUNNER_STATUS_TOKEN is empty (must be a repository secret), using GitHub runner"
+          else
+            status=$(curl -sS -o runners.json -w '%{http_code}' \
+              -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/runners")
+            echo "runners API HTTP $status"
+            if [ "$status" = "200" ]; then
+              echo "Runners registered on this repo:"
+              jq -r '.runners[] | "  \(.name) status=\(.status) busy=\(.busy) labels=\([.labels[].name] | join(","))"' runners.json
+              online=$(jq --arg name "$SELF_HOSTED_RUNNER" '[.runners[] | select(.name == $name and .status == "online")] | length' runners.json)
+              if [ "$online" -gt 0 ]; then
+                runner='["self-hosted","Linux"]'
+              else
+                echo "$SELF_HOSTED_RUNNER is not registered on this repo or is offline"
+              fi
+            else
+              jq -r '.message // empty' runners.json
+            fi
+          fi
+          echo "Using runner: $runner"
+          echo "runner=$runner" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runner) }}
+    container:
+      image: eclipse-temurin:25-jdk
+      # persists between runs on the self-hosted runner, throwaway on GitHub runners
+      volumes:
+        - polym-env-gradle:/gradle-cache
+    env:
+      # HOME is /github/home inside container jobs, so pin the cache to the volume
+      GRADLE_USER_HOME: /gradle-cache
+    steps:
+      - name: install packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git
       - name: checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: validate gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
-      - name: setup jdk
-        uses: actions/setup-java@v4
+      - name: setup gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          java-version: '25'
-          distribution: 'microsoft'
+          cache-disabled: ${{ runner.environment == 'self-hosted' }}
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
+
+      - name: build and test
+        if: github.ref != 'refs/heads/master'
+        run: ./gradlew build --console=plain
+      # master only receives already-tested branches
       - name: build
-        run: ./gradlew build
-      - name: capture build artifacts
+        if: github.ref == 'refs/heads/master'
+        run: ./gradlew build -x test --console=plain
+
+      - name: upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Artifacts
           path: versions/*/build/libs/
+      - name: upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            versions/*/build/run/gameTest/logs/
+            versions/*/build/run/gameTest/crash-reports/
+            versions/*/build/reports/
+            build/reports/
+          if-no-files-found: ignore
+
+      - name: read version
+        id: version
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version=$(grep '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+          echo "version=$version"
+          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            echo "Tag $version already exists, skipping release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: create release
+        if: steps.version.outputs.release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          # mod jars only, the -sources jars end in "sources.jar"
+          files: versions/*/build/libs/*[0-9].jar
+          fail_on_unmatched_files: true
+
+      - name: fix workspace ownership
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE/..")" "$GITHUB_WORKSPACE"
