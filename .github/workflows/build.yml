@@ -1,3 +1,12 @@
+# Builds every supported Minecraft version (Stonecutter) and runs the gametests.
+# On master, a new mod_version in gradle.properties is released automatically as a
+# GitHub release with one jar per Minecraft version.
+#
+# Runner choice: pushes by the repo owner run on the self-hosted runner when it is
+# online, everything else (pull requests, forks, runner offline) runs on GitHub.
+# The online check needs the repository secret RUNNER_STATUS_TOKEN: a fine-grained
+# token with "Administration: Read" on this repository.
+
 name: build
 
 on:
@@ -58,83 +67,89 @@ jobs:
   build:
     needs: pick-runner
     runs-on: ${{ fromJSON(needs.pick-runner.outputs.runner) }}
+    timeout-minutes: 60
+    # same environment on both runners; the self-hosted host only needs Docker
     container:
-      image: eclipse-temurin:25-jdk
-      # persists between runs on the self-hosted runner, throwaway on GitHub runners
+      image: eclipse-temurin:25-jdk-noble
+      # named volume keeps the Gradle cache between runs on the self-hosted runner
       volumes:
-        - polym-env-gradle:/gradle-cache
+        - polym-env-gradle:/gradle-home
     env:
       # HOME is /github/home inside container jobs, so pin the cache to the volume
-      GRADLE_USER_HOME: /gradle-cache
+      GRADLE_USER_HOME: /gradle-home
     steps:
-      - name: install packages
+      - name: install system packages
+        # Loom wraps run tasks in xvfb-run when CI is set on Linux, even server gametests;
+        # git so checkout fetches tags
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git
+          apt-get update -q
+          apt-get install -y -q --no-install-recommends git xvfb xauth
       - name: checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: validate gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
+        uses: gradle/actions/wrapper-validation@v5
       - name: setup gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
         with:
+          # the docker volume already holds the cache on the self-hosted runner
           cache-disabled: ${{ runner.environment == 'self-hosted' }}
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: build and test
-        if: github.ref != 'refs/heads/master'
-        run: ./gradlew build --console=plain
+      - name: build all versions
+        run: ./gradlew buildAndCollect --console=plain
       # master only receives already-tested branches
-      - name: build
-        if: github.ref == 'refs/heads/master'
-        run: ./gradlew build -x test --console=plain
+      - name: server gametests
+        if: github.ref != 'refs/heads/master'
+        run: ./gradlew runGameTest --console=plain
 
-      - name: upload build artifacts
-        uses: actions/upload-artifact@v4
+      - name: read mod version
+        id: version
+        run: echo "mod_version=$(grep '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+      - name: capture build artifacts
+        uses: actions/upload-artifact@v5
         with:
           name: Artifacts
-          path: versions/*/build/libs/
-      - name: upload test logs
+          path: build/libs/${{ steps.version.outputs.mod_version }}/
+      - name: capture gametest logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
-          name: test-logs
+          name: Gametest-logs
           path: |
             versions/*/build/run/gameTest/logs/
             versions/*/build/run/gameTest/crash-reports/
-            versions/*/build/reports/
-            build/reports/
           if-no-files-found: ignore
 
-      - name: read version
-        id: version
+      # a release is only made when the version in gradle.properties has no tag yet
+      - name: check release tag
+        id: tag
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          VERSION: ${{ steps.version.outputs.mod_version }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          version=$(grep '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
-          echo "version=$version"
-          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
-            echo "Tag $version already exists, skipping release"
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "Tag $VERSION already exists, skipping release"
             echo "release=false" >> "$GITHUB_OUTPUT"
           else
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: create release
-        if: steps.version.outputs.release == 'true'
+      - name: release new version
+        if: steps.tag.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: ${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.version.outputs.mod_version }}
           target_commitish: ${{ github.sha }}
+          name: Polym ${{ steps.version.outputs.mod_version }}
           generate_release_notes: true
-          # mod jars only, the -sources jars end in "sources.jar"
-          files: versions/*/build/libs/*[0-9].jar
+          files: build/libs/${{ steps.version.outputs.mod_version }}/*.jar
           fail_on_unmatched_files: true
 
-      - name: fix workspace ownership
+      # the container runs as root; hand the workspace back to the runner user so the
+      # next self-hosted run can clean it
+      - name: restore workspace ownership
         if: always()
         run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE/..")" "$GITHUB_WORKSPACE"

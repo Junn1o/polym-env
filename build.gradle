@@ -88,6 +88,13 @@ jar {
 	}
 }
 
+tasks.register("buildAndCollect", Copy) {
+	group = "build"
+	description = "Builds the mod jar and copies it to the root build/libs/<mod_version>/"
+	from(tasks.named("remapJar").flatMap { it.archiveFile })
+	into(rootProject.layout.buildDirectory.dir("libs/${project.mod_version}"))
+}
+
 // configure the maven publication
 publishing {
 	publications {
