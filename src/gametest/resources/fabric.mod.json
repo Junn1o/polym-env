@@ -1,0 +1,15 @@
+{
+	"schemaVersion": 1,
+	"id": "polym-env-gametest",
+	"version": "1.0.0",
+	"name": "polym-env GameTests",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.junnio.gametest.PolymenvGameTest"
+		]
+	},
+	"depends": {
+		"polym-env": "*"
+	}
+}
