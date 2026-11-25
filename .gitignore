@@ -39,3 +39,8 @@ replay_*.log
 *.hprof
 *.jfr
 .claude/*
+# stonecutter
+
+.gradle/stonecutter/
+versions/*/build/
+versions/*/.gradle/

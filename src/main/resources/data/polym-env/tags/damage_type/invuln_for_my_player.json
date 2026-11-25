@@ -4,7 +4,7 @@
     "minecraft:player_attack",
     "minecraft:mace_smash",
     "minecraft:arrow",
-    "minecraft:spear",
+    { "id": "minecraft:spear", "required": false },
     "minecraft:generic_kill"
   ]
 }
